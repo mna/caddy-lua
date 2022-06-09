@@ -2,6 +2,7 @@ http://localhost:8080
 
 route {
   lua {
+    handler_path test_handler.lua
   }
   file_server browse
 }
