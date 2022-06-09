@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -19,11 +20,12 @@ func init() {
 
 // Lua implements an HTTP handler that runs a Lua script to handle the request.
 type Lua struct {
-	CallStackSize       int  `json:"call_stack_size,omitempty"`
-	RegistrySize        int  `json:"registry_size,omitempty"`
-	RegistryMaxSize     int  `json:"registry_max_size,omitempty"`
-	RegistryGrowStep    int  `json:"registry_grow_step,omitempty"`
-	MinimizeStackMemory bool `json:"minimize_stack_memory,omitempty"`
+	CallStackSize       int    `json:"call_stack_size,omitempty"`
+	RegistrySize        int    `json:"registry_size,omitempty"`
+	RegistryMaxSize     int    `json:"registry_max_size,omitempty"`
+	RegistryGrowStep    int    `json:"registry_grow_step,omitempty"`
+	MinimizeStackMemory bool   `json:"minimize_stack_memory,omitempty"`
+	HandlerPath         string `json:"handler_path,omitempty"`
 
 	logger *zap.Logger
 }
@@ -42,11 +44,19 @@ func (l *Lua) Provision(ctx caddy.Context) error {
 	return nil
 }
 
+// Validate implements caddy.Validator.
+func (l *Lua) Validate() error {
+	if l.HandlerPath == "" {
+		return errors.New("the handler_path configuration option is required")
+	}
+	return nil
+}
+
 // ServeHTTP implements caddyhttp.MiddlewareHandler.
 func (l Lua) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	L := lua.NewState()
 	defer L.Close()
-	if err := L.DoString(`print("hello")`); err != nil {
+	if err := L.DoFile(l.HandlerPath); err != nil {
 		return err
 	}
 	return next.ServeHTTP(w, r)
@@ -102,6 +112,11 @@ func (l *Lua) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 					return d.Errf("%s: %w", field, d.ArgErr())
 				}
 
+			case "handler_path":
+				if !d.Args(&l.HandlerPath) {
+					return d.Errf("%s: %w", field, d.ArgErr())
+				}
+
 			default:
 				return d.Errf("%s: unknown configuration option", field)
 			}
@@ -122,4 +137,5 @@ var (
 	_ caddy.Provisioner           = (*Lua)(nil)
 	_ caddyfile.Unmarshaler       = (*Lua)(nil)
 	_ caddyhttp.MiddlewareHandler = (*Lua)(nil)
+	_ caddy.Validator             = (*Lua)(nil)
 )
